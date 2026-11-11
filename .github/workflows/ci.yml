@@ -1,0 +1,57 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env: { POSTGRES_USER: dapro_owner, POSTGRES_PASSWORD: ci_owner_pw, POSTGRES_DB: dapro }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U dapro_owner" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+    env:
+      DAPRO_DATABASE_URL: postgresql+psycopg://dapro_app:ci_app_pw@localhost:5432/dapro
+      DAPRO_DATABASE_OWNER_URL: postgresql+psycopg://dapro_owner:ci_owner_pw@localhost:5432/dapro
+      DAPRO_APP_DB_PASSWORD: ci_app_pw
+      DAPRO_REDIS_URL: redis://localhost:6379/0
+      DAPRO_JWT_SECRET: ci-secret-ci-secret-ci-secret-ci-secret-xx
+      DAPRO_DEMO_PASSWORD: Ci@Demo2026
+      DAPRO_STORAGE_DIR: /tmp/dapro-storage
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements-dev.txt -c constraints.txt pip-audit
+      - run: ruff check app tests
+      - run: pytest -q -p no:warnings
+      - run: pip-audit -r requirements.txt
+      - name: Migration reversibility
+        run: alembic upgrade head && alembic downgrade base && alembic upgrade head
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2

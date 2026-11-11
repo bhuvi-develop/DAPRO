@@ -1,0 +1,41 @@
+# Secrets — never commit real environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node / frontend build
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+frontend/test-results/
+frontend/playwright-report/
+
+# Runtime data
+backend/storage/
+backups/
+*.log
+
+# Local tooling / IDE / OS
+.claude/settings.local.json
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Client source documents (kept local, not published)
+docs/source/

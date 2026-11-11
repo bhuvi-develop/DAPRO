@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* DAPRO tokens (HSL). Palette: Deep Navy #102A56, Enterprise Blue #1D4ED8, Teal #0F766E, Emerald #059669,
+   Soft Background #F5F7FB, Light Blue #EFF6FF, Text #1F2937, Secondary #64748B, Border #E2E8F0,
+   Amber #D97706, Critical Red #DC2626. */
+@layer base {
+  :root {
+    --background: 220 43% 97%;
+    --surface: 0 0% 100%;
+    --foreground: 215 28% 17%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 17%;
+    --primary: 224 76% 48%;
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 214 100% 97%;
+    --navy: 218 69% 20%;
+    --navy-800: 218 62% 25%;
+    --navy-700: 218 50% 32%;
+    --navy-foreground: 214 60% 92%;
+    --teal: 175 77% 26%;
+    --teal-soft: 172 60% 94%;
+    --success: 161 94% 30%;
+    --success-soft: 152 70% 94%;
+    --warning: 32 95% 44%;
+    --warning-soft: 43 96% 93%;
+    --danger: 0 72% 51%;
+    --danger-soft: 0 86% 96%;
+    --muted: 214 33% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 214 100% 97%;
+    --accent-foreground: 224 76% 40%;
+    --border: 214 32% 91%;
+    --input: 214 32% 86%;
+    --ring: 224 76% 48%;
+  }
+  * { @apply border-border; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+    font-size: 14px;
+  }
+  h1, h2, h3, h4 { @apply font-semibold tracking-tight text-foreground; }
+  :focus-visible { @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background; }
+  ::selection { background: hsl(var(--primary) / 0.15); }
+}
+
+@layer utilities {
+  .num { font-variant-numeric: tabular-nums; }
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .skeleton { position: relative; overflow: hidden; background: hsl(var(--muted)); }
+  .skeleton::after {
+    content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.6), transparent);
+    animation: shimmer 1.4s infinite;
+  }
+  @keyframes shimmer { 100% { transform: translateX(100%); } }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

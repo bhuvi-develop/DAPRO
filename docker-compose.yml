@@ -1,0 +1,113 @@
+# DAPRO platform - one isolated Docker Compose project.
+# Every container, network and volume is prefixed "dapro-platform" (e.g. dapro-platform-backend-1,
+# dapro-platform_pgdata). Host ports are bound to 127.0.0.1 only and use the 84xx range so they do not
+# collide with other local stacks. See docs/DOCKER_SETUP.md.
+name: dapro-platform
+
+x-backend-env: &backend-env
+  DAPRO_ENV: ${DAPRO_ENV:-demo}
+  DAPRO_DATABASE_URL: postgresql+psycopg://dapro_app:${DAPRO_APP_DB_PASSWORD:?set DAPRO_APP_DB_PASSWORD in .env}@postgres:5432/${DAPRO_DB_NAME:-dapro}
+  DAPRO_DATABASE_OWNER_URL: postgresql+psycopg://${DAPRO_DB_OWNER:-dapro_owner}:${DAPRO_DB_OWNER_PASSWORD:?set DAPRO_DB_OWNER_PASSWORD in .env}@postgres:5432/${DAPRO_DB_NAME:-dapro}
+  DAPRO_APP_DB_PASSWORD: ${DAPRO_APP_DB_PASSWORD}
+  DAPRO_REDIS_URL: redis://redis:6379/0
+  DAPRO_JWT_SECRET: ${DAPRO_JWT_SECRET:?set DAPRO_JWT_SECRET in .env}
+  DAPRO_CORS_ORIGINS: ${DAPRO_CORS_ORIGINS:-http://localhost:8480}
+  DAPRO_DEMO_PASSWORD: ${DAPRO_DEMO_PASSWORD}
+  DAPRO_EMAIL_MODE: ${DAPRO_EMAIL_MODE:-mock}
+  DAPRO_SMS_MODE: ${DAPRO_SMS_MODE:-mock}
+  DAPRO_BANK_ADAPTER: ${DAPRO_BANK_ADAPTER:-mock}
+  DAPRO_FIELD_LOCATION_CAPTURE_ENABLED: "false"
+  DAPRO_STORAGE_DIR: /app/storage
+
+x-backend-build: &backend-build
+  context: ./backend
+  args: { INSTALL_DEV: "true" }
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_USER: ${DAPRO_DB_OWNER:-dapro_owner}
+      POSTGRES_PASSWORD: ${DAPRO_DB_OWNER_PASSWORD}
+      POSTGRES_DB: ${DAPRO_DB_NAME:-dapro}
+    ports: ["127.0.0.1:${DAPRO_DB_HOST_PORT:-55480}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 512m } } }
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 160m } } }
+
+  backend:
+    image: dapro-platform/backend:dev
+    build: *backend-build
+    environment: *backend-env
+    command: ["sh", "/app/scripts/start-api.sh"]
+    ports: ["127.0.0.1:${DAPRO_API_HOST_PORT:-8410}:8000"]
+    volumes: [storage:/app/storage]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 768m } } }
+
+  celery-worker:
+    image: dapro-platform/backend:dev
+    environment: *backend-env
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "-l", "INFO", "--concurrency", "2"]
+    volumes: [storage:/app/storage]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d celery@$$HOSTNAME -t 10 | grep -q pong"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      backend: { condition: service_healthy }
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 512m } } }
+
+  # Single scheduler for the beat_schedule in app/workers/celery_app.py (bank sync, stale marking,
+  # nightly risk evaluation, audit-chain verification, communication dispatch). Run exactly one.
+  celery-beat:
+    image: dapro-platform/backend:dev
+    environment: *backend-env
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "-l", "INFO", "-s", "/tmp/celerybeat-schedule"]
+    healthcheck: { disable: true }   # beat has no endpoint; its liveness shows as task dispatch in worker logs
+    depends_on:
+      backend: { condition: service_healthy }
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 256m } } }
+
+  frontend:
+    image: dapro-platform/frontend:dev
+    build: { context: ./frontend }
+    ports: ["127.0.0.1:${DAPRO_WEB_HOST_PORT:-8480}:80"]
+    depends_on:
+      backend: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 15s
+      retries: 10
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 64m } } }
+
+volumes:
+  pgdata:
+  storage:
